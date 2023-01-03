@@ -1,0 +1,164 @@
+import String from "string"
+import Char from "char"
+import Number from "number"
+import Result from "result"
+import Array from "array"
+import List from "list"
+import Exception from "exception"
+import Option from "option"
+
+let failwith = (str) => Exception.registerPrinter(e => Some(str))
+
+enum Token {
+    Tk_Number(Number),
+    Tk_Plus,
+    Tk_Minus,
+    Tk_Mul,
+    Tk_Div,
+    Tk_Lpar,
+    Tk_Rpar
+}
+
+let getTokens = (str : String) => {
+    // verify if it is a number or a dot
+    let isNb = (c : Char) => {
+        let nb = Char.code(c)
+        nb >= 48 || nb <= 57 
+    }
+
+    let stringToCharList = (str : String) => {
+        Array.toList(String.explode(str))
+    }
+
+    let charListToNumber = (c : List<Char>) => {
+        let rec aux = (nb, l) => {
+            match(l) {
+                [] => (nb, l),
+                [hd, ...tl] when (Char.code(hd) >= 48 && Char.code(hd) <= 57) || Char.code(hd) == 46 => 
+                    aux(nb ++ Char.toString(hd), tl),
+                _ => (nb, l)
+            }
+        }
+        let (nb, l) = aux("", c)
+        (Result.unwrap(Number.parse(nb)), l)
+    } 
+
+    let rec nextToken = (tokens : List<Token>, tk) => {
+        match(tk) {
+            [] => tokens,
+            ['+', ...tl] => nextToken([Tk_Plus, ...tokens], tl),
+            ['-', ...tl] => nextToken([Tk_Minus, ...tokens], tl),
+            ['*', ...tl] => nextToken([Tk_Mul, ...tokens], tl),
+            ['/', ...tl] => nextToken([Tk_Div, ...tokens], tl),
+            ['(', ...tl] => nextToken([Tk_Lpar, ...tokens], tl),
+            [')', ...tl] => nextToken([Tk_Rpar, ...tokens], tl),
+            [' ', ...tl] => nextToken(tokens, tl),
+            [hd, ...tl] when Result.isOk(Number.parse(Char.toString(hd))) => {
+                let (number, l) = charListToNumber([hd, ...tl])
+                nextToken([Tk_Number(number) , ...tokens], l)
+            },
+            _ => {
+                failwith("unexpected character")
+                []
+                }
+        }
+    }
+    let reversed = nextToken([], stringToCharList(str))
+    List.reverse(reversed)
+}
+
+
+
+
+enum Expression {
+    Nb(Number),
+    Operation(Expression, Token, Expression),
+    //Function(String, Expression)
+}
+
+
+let rec parseTerm = (tokens : List<Token>) => {
+    let (left, l) = parseFactor(tokens)
+    match(l) {
+        [Tk_Mul, ...tl] => {
+            let (right, l) = parseTerm(tl)
+            (Operation(left, Tk_Mul, right), l)
+        },
+        [Tk_Div, ...tl] => {
+            let (right, l) = parseTerm(tl)
+            (Operation(left, Tk_Div, right), l)
+        },
+        _ => (left, l)
+    }
+},
+parseExpression = (tokens : List<Token>) => {
+    let (left, l) = parseTerm(tokens)
+    match(l) {
+        [Tk_Plus, ...tl] => {
+            let (right, l) = parseExpression(tl)
+            (Operation(left, Tk_Plus, right), l)
+        },
+        [Tk_Minus, ...tl] => {
+            let (right, l) = parseExpression(tl)
+            (Operation(left, Tk_Minus, right), l)
+        },
+        _ => (left, l)
+    }
+},
+parseFactor = (tokens : List<Token>) => {
+    match(tokens) {
+        [Tk_Number(nb), ...tl] => (Nb(nb), tl),
+        [Tk_Minus, ...tl] => {
+            match(List.head(tl)) {
+                Some(Tk_Number(_)) => {
+                    let (Nb(test), l) = parseFactor(tl)
+                    (Nb(test * -1), l)
+                },
+                _ => {
+                    failwith("expected a number")
+                    (Nb(0), [])
+                }
+            }
+        },
+        [Tk_Lpar, ...tl] => {
+            let (exp, l) = parseExpression(tl)
+            match(l) {
+                [Tk_Rpar, ...tl] => (exp, tl),
+                _ => {
+                    failwith("expected a closing parenthesis ")
+                    (Nb(0), [])
+                    }
+            }
+        },
+        _ => {
+            failwith("expected a number")
+            (Nb(0), [])
+    }
+    }
+}
+
+
+let rec eval = (exp) => {
+    match(exp) {
+        Nb(nb) => nb,
+        Operation(left, op, right) => {
+            match(op) {
+                Tk_Plus => eval(left) + eval(right),
+                Tk_Minus => eval(left) - eval(right),
+                Tk_Mul => eval(left) * eval(right),
+                Tk_Div => eval(left) / eval(right),
+                _ => {
+                    failwith("unexpected Token"); 0
+                    }
+            }
+    }
+}
+}
+
+let test = "2 * 4 + 2 / 2 - ( - 4)"
+
+let tokens = getTokens(test)
+let (exp, l) = parseExpression(tokens)
+print(eval(exp))
+
+
