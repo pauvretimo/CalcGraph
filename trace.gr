@@ -7,16 +7,21 @@ import List from "list"
 import Exception from "exception"
 import Option from "option"
 
-let failwith = (str) => Exception.registerPrinter(e => Some(str))
+let failwith = (str) => print(str)
 
 enum Token {
     Tk_Number(Number),
+    Tk_Variable(String),
+
+    Tk_Pow,
+    Tk_Fun(String),
+
     Tk_Plus,
     Tk_Minus,
     Tk_Mul,
     Tk_Div,
     Tk_Lpar,
-    Tk_Rpar
+    Tk_Rpar,
 }
 
 let getTokens = (str : String) => {
@@ -24,6 +29,10 @@ let getTokens = (str : String) => {
     let isNb = (c : Char) => {
         let nb = Char.code(c)
         nb >= 48 || nb <= 57 
+    }
+    let isLetter = (c : Char) => {
+        let nb = Char.code(c)
+        (nb >= 65 && nb <= 90) || (nb >= 97 && nb <= 122)
     }
 
     let stringToCharList = (str : String) => {
@@ -41,7 +50,25 @@ let getTokens = (str : String) => {
         }
         let (nb, l) = aux("", c)
         (Result.unwrap(Number.parse(nb)), l)
-    } 
+    }
+
+    let getFunction = (c : List<Char>) => {
+        let rec aux = (nb, l) => {
+            match(l) {
+                [] => (nb, l),
+                [hd, ...tl] when isLetter(hd) => 
+                    aux(nb ++ Char.toString(hd), tl),
+                [hd, ...tl] when hd == '(' => 
+                    (nb, tl),
+                _ => {
+                    failwith("no parenthesis after function")
+                    ("", [])
+                }
+            }
+        }
+        let (nb, l) = aux("", c)
+        (nb, l)
+    }
 
     let rec nextToken = (tokens : List<Token>, tk) => {
         match(tk) {
@@ -53,10 +80,34 @@ let getTokens = (str : String) => {
             ['(', ...tl] => nextToken([Tk_Lpar, ...tokens], tl),
             [')', ...tl] => nextToken([Tk_Rpar, ...tokens], tl),
             [' ', ...tl] => nextToken(tokens, tl),
+            ['^', ...tl] => nextToken([Tk_Pow, ...tokens], tl),
             [hd, ...tl] when Result.isOk(Number.parse(Char.toString(hd))) => {
                 let (number, l) = charListToNumber([hd, ...tl])
-                nextToken([Tk_Number(number) , ...tokens], l)
+                match(l) {
+                    [] => nextToken([Tk_Number(number), ...tokens], l),
+                    [hd, ...tl] when hd == '(' || isLetter(hd) => nextToken([Tk_Mul, Tk_Number(number), ...tokens], l),
+                    _ => nextToken([Tk_Number(number), ...tokens], l)
+                }
             },
+            [hd, ...tl] when isLetter(hd) => {
+                match(hd) {
+                    'X' => nextToken([Tk_Variable("X"), ...tokens], tl),
+                    'e' => nextToken([Tk_Variable("e"), ...tokens], tl),
+                    'p' => {
+                        match(tl) {
+                            ['i', ...tl] => nextToken([Tk_Variable("pi"), ...tokens], tl),
+                            _ => {
+                                failwith("unexpected character")
+                                []
+                            }
+                        }
+                    },
+                    _ => {
+                        let (str, l) = getFunction([hd, ...tl])
+                        nextToken([Tk_Fun(str), ...tokens], l)
+                    }
+                    }
+                },
             _ => {
                 failwith("unexpected character")
                 []
@@ -68,30 +119,14 @@ let getTokens = (str : String) => {
 }
 
 
-
-
 enum Expression {
     Nb(Number),
     Operation(Expression, Token, Expression),
-    //Function(String, Expression)
+    Variable(String),
+    Function(String, Expression)
 }
 
-
-let rec parseTerm = (tokens : List<Token>) => {
-    let (left, l) = parseFactor(tokens)
-    match(l) {
-        [Tk_Mul, ...tl] => {
-            let (right, l) = parseTerm(tl)
-            (Operation(left, Tk_Mul, right), l)
-        },
-        [Tk_Div, ...tl] => {
-            let (right, l) = parseTerm(tl)
-            (Operation(left, Tk_Div, right), l)
-        },
-        _ => (left, l)
-    }
-},
-parseExpression = (tokens : List<Token>) => {
+let rec parseExpression = (tokens : List<Token>) => {
     let (left, l) = parseTerm(tokens)
     match(l) {
         [Tk_Plus, ...tl] => {
@@ -105,20 +140,37 @@ parseExpression = (tokens : List<Token>) => {
         _ => (left, l)
     }
 },
+parseTerm = (tokens : List<Token>) => {
+    let (left, l) = parseFunction(tokens)
+    match(l) {
+        [Tk_Mul, ...tl] => {
+            let (right, l) = parseTerm(tl)
+            (Operation(left, Tk_Mul, right), l)
+        },
+        [Tk_Div, ...tl] => {
+            let (right, l) = parseTerm(tl)
+            (Operation(left, Tk_Div, right), l)
+        },
+        _ => (left, l)
+    }
+},
+parseFunction = (tokens : List<Token>) => {
+    let (left, l) = parseFactor(tokens)
+    match(l) {
+        [Tk_Pow, ...tl] => {
+            let (right, l) = parseFunction(tl)
+            (Operation(left, Tk_Pow, right), l)
+        },
+        _ => (left, l)
+    }
+},
 parseFactor = (tokens : List<Token>) => {
     match(tokens) {
         [Tk_Number(nb), ...tl] => (Nb(nb), tl),
+        [Tk_Variable(str), ...tl] => (Variable(str), tl),
         [Tk_Minus, ...tl] => {
-            match(List.head(tl)) {
-                Some(Tk_Number(_)) => {
-                    let (Nb(test), l) = parseFactor(tl)
-                    (Nb(test * -1), l)
-                },
-                _ => {
-                    failwith("expected a number")
-                    (Nb(0), [])
-                }
-            }
+            let (Nb(test), l) = parseFactor(tl)
+            (Nb(test * -1), l)
         },
         [Tk_Lpar, ...tl] => {
             let (exp, l) = parseExpression(tl)
@@ -130,23 +182,62 @@ parseFactor = (tokens : List<Token>) => {
                     }
             }
         },
-        _ => {
+        [Tk_Fun(str), ...tl] => {
+            let (exp, l) = parseExpression(tl)
+            match(l) {
+                [Tk_Rpar, ...tl] => (Function(str, exp), tl),
+                _ => {
+                    failwith("expected a closing parenthesis ")
+                    (Nb(0), [])
+            }
+            }
+            },
+        f => {
             failwith("expected a number")
+            print(f)
             (Nb(0), [])
     }
     }
 }
 
 
-let rec eval = (exp) => {
+let rec eval = (exp, x_value) => {
     match(exp) {
         Nb(nb) => nb,
+        Variable(str) => {
+            match(str) {
+                "X" => x_value,
+                "pi" => Number.pi,
+                "e" => Number.e,
+                _ => {
+                    failwith("unexpected variable")
+                    0
+                }
+            }
+        },
+        Function(str, param) => {
+            match(str) {
+                "cos" => Number.cos(eval(param, x_value)),
+                "sin" => Number.sin(eval(param, x_value)),
+                "tan" => Number.tan(eval(param, x_value)),
+                "factorial" => Number.factorial(eval(param, x_value)),
+                "abs" => Number.abs(eval(param, x_value)),
+                "floor" => Number.floor(eval(param, x_value)),
+                "sqrt" => Number.sqrt(eval(param, x_value)),
+                "exp" => Number.exp(eval(param, x_value)),
+                _ => {
+                    failwith("unexpected function")
+                    0
+                },
+            }
+        },
         Operation(left, op, right) => {
             match(op) {
-                Tk_Plus => eval(left) + eval(right),
-                Tk_Minus => eval(left) - eval(right),
-                Tk_Mul => eval(left) * eval(right),
-                Tk_Div => eval(left) / eval(right),
+                Tk_Plus => eval(left, x_value) + eval(right, x_value),
+                Tk_Minus => eval(left, x_value) - eval(right, x_value),
+                Tk_Mul => eval(left, x_value) * eval(right, x_value),
+                Tk_Div => eval(left, x_value) / eval(right, x_value),
+                Tk_Pow => Number.pow(eval(left, x_value), eval(right, x_value)),
                 _ => {
                     failwith("unexpected Token"); 0
                     }
@@ -155,10 +246,41 @@ let rec eval = (exp) => {
 }
 }
 
-let test = "2 * 4 + 2 / 2 - ( - 4)"
+let eval_curve = (exp, x_values) => {
+    List.map(x => eval(exp, x), x_values)
+}
+
+
+export let calculator = (str : String, start : Number, end : Number, step : Number) => {
+    let getGraph = (st : Number, nd : Number, s : Number) => {
+        let rec aux = (acc, i) => {
+            if (i > nd) {
+                acc
+            } else {
+                aux([i, ...acc], i + s)
+            }
+        }
+        if( !(Number.isInteger(st) && Number.isInteger(nd)) ) {
+            failwith("start and end must be integers")
+            []  
+        } else if(st > nd) {
+            List.reverse(aux([], nd))
+        } else (
+        List.reverse(aux([], st))
+        )
+    }
+
+    let tokens = getTokens(str)
+    let (exp, l) = parseExpression(tokens)
+    eval_curve(exp, getGraph(start, end, step))
+}
+
+print(calculator("sin(X)*3", 0, 100, 1))
+
+/* 
+let test = "sin(e)*3"
 
 let tokens = getTokens(test)
 let (exp, l) = parseExpression(tokens)
-print(eval(exp))
-
-
+print(eval_curve(exp, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+ */
