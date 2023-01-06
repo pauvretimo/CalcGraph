@@ -1,2 +1,5 @@
 /target
 /trace.gr.wasm
+/.gitignore
+/CalcGraph.html
+/CalcGraph.js
