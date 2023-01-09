@@ -1,2 +1,5 @@
 /target
 /Calculator.gr.wasm
+/node_modules
+/package.json
+/package-lock.json
