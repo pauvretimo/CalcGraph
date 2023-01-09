@@ -2,6 +2,7 @@ import String from "string"
 import Char from "char"
 import Number from "number"
 import Result from "result"
+import Process from "sys/process"
 import Array from "array"
 import List from "list"
 import Exception from "exception"
@@ -274,6 +275,25 @@ export let calculator = (str : String, start : Number, end : Number, step : Numb
     let (exp, l) = parseExpression(tokens)
     eval_curve(exp, getGraph(start, end, step))
 }
+
+
+
+
+
+
+
+export let main = () => {
+    let arguments = Result.unwrap( Process.argv() )
+    if (String.contains("grain", arguments[0])) {
+        failwith("compile")
+        [0]
+    } else {
+        calculator(arguments[0], 0, 100, 1)
+    }
+}
+
+print(main())
+
 
 
 /* 
