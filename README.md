@@ -5,7 +5,7 @@ To test it you will need :
  - [Grain](https://grain-lang.org/docs/getting_grain)
 
 First you need to compile Calculator.gr :
-`grain.gr Calculator.gr`
+`grain Calculator.gr`
 It will create a Calculator.gr.wasm file
 
 Then install WASI and fs from npm :
