@@ -1,6 +1,9 @@
-import { Suspense, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { init, WASI } from "@wasmer/wasi";
-import wasm from "./Calculator.gr.wasm?raw";
+import wasm from "./Calculator.gr.wasm?raw-hex";
+
+const fromHexString = (hexString) =>
+      Uint8Array.from(hexString.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
 
 const call_culator = async (str) => {
 
@@ -9,10 +12,17 @@ const call_culator = async (str) => {
         env: {},
         args: str.split(' '),
     });
-    const module = await WebAssembly.compile(wasm);
+
+    const wasmBytes = fromHexString(wasm).buffer;
+    const module = await WebAssembly.compile(wasmBytes);
+    
+    const importObject = {
+      wasi_snapshot_preview1: wasi.getImports(module).wasi_snapshot_preview1,
+  }; // get the error unreachable in start function without importObject 
+  // and just get an error unreachable code with it 
+    
     wasi.instantiate(module, {});
     wasi.start();
-    //console.log("stdout : ", wasi.getStdoutString());
     let resp = wasi.getStdoutString()
     return resp
 }

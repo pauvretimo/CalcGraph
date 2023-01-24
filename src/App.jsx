@@ -23,7 +23,7 @@ function App() {
             value={formula()}
             onChange={(e) => setFormula(e.currentTarget.value)}
           />
-          <button onClick={() => graph()}>&gt;</button>
+          <button onClick={() => {}}>&gt;</button>
         </div>
     </div>
   );
